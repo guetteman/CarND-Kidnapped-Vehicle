@@ -1,13 +1,19 @@
-# Overview
-This repository contains all the code needed to complete the final project for the Localization course in Udacity's Self-Driving Car Nanodegree.
+# **Kidnapped Vehicle**
 
-#### Submission
-All you will submit is your completed version of `particle_filter.cpp`, which is located in the `src` directory. You should probably do a `git pull` before submitting to verify that your project passes the most up-to-date version of the grading code (there are some parameters in `src/main.cpp` which govern the requirements on accuracy and run time.)
+![alt text][image1]
 
-## Project Introduction
-Your robot has been kidnapped and transported to a new location! Luckily it has a map of this location, a (noisy) GPS estimate of its initial location, and lots of (noisy) sensor and control data.
+---
 
-In this project you will implement a 2 dimensional particle filter in C++. Your particle filter will be given a map and some initial localization information (analogous to what a GPS would provide). At each time step your filter will also get observation and control data.
+
+[//]: # (Image References)
+
+[image1]: ./images/main.png "Kidnapped Vehicle"
+[image2]: ./images/particle_filter_flowchart.png "Particle Filter Algorithm Flowchart"
+[image3]: ./images/results.png "Test results"
+
+### This is the third project of term 2 of self-driving cars engineer nanodegree.
+
+In this project we will implement a 2 dimensional particle filter in C++. To the particle filter will be given a map and some initial localization information (analogous to what a GPS would provide). At each time step the filter will also get observation and control data.
 
 ## Running the Code
 This project involves the Term 2 Simulator which can be downloaded [here](https://github.com/udacity/self-driving-car-sim/releases)
@@ -30,114 +36,220 @@ Alternatively some scripts have been included to streamline this process, these 
 
 Tips for setting up your environment can be found [here](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/0949fca6-b379-42af-a919-ee50aa304e6a/lessons/f758c44c-5e40-4e01-93b5-1a82aa4e044f/concepts/23d376c7-0195-4276-bdf0-e02f1f3c665d)
 
-Note that the programs that need to be written to accomplish the project are src/particle_filter.cpp, and particle_filter.h
+## Overview of Particle Filter Algorithm Map
 
-The program main.cpp has already been filled out, but feel free to modify it.
+![alt text][image2]
 
-Here is the main protocol that main.cpp uses for uWebSocketIO in communicating with the simulator.
+The Particle Filter algorithm will go through the following steps:
 
-INPUT: values provided by the simulator to the c++ program
+- **Initialization** - At the initialization step we estimate our position from GPS input. The subsequent steps in the process will refine this estimate to localize our vehicle.
 
-// sense noisy position data from the simulator
+- **Prediction Step** - During the prediction step we add the control input (yaw rate & velocity) for all particles.
 
-["sense_x"]
+- **Update Step (Update Weights)** - During the update step, we update our particle weights using map landmark positions and feature measurements.
 
-["sense_y"]
+- **Resample** - During resampling we will resample particles, drawing a particle i (i is the particle index) proportional to its weight.
 
-["sense_theta"]
+## Initialization
 
-// get the previous velocity and yaw rate to predict the particle's transitioned state
+```c++
+void ParticleFilter::init(double x, double y, double theta, double std[]) {
+	// TODO: Set the number of particles. Initialize all particles to first position (based on estimates of 
+	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
+	// Add random Gaussian noise to each particle.
+	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
-["previous_velocity"]
+	if (is_initialized) { return; }
 
-["previous_yawrate"]
+	num_particles = 100;
 
-// receive noisy observation data from the simulator, in a respective list of x/y values
+	double std_x = std[0];
+  	double std_y = std[1];
+  	double std_theta = std[2];
 
-["sense_observations_x"]
+	normal_distribution<double> normal_dist_x(x, std_x);
+	normal_distribution<double> normal_dist_y(y, std_y);
+	normal_distribution<double> normal_dist_theta(theta, std_theta);
 
-["sense_observations_y"]
+	for (int i = 0; i < num_particles; i++) {
+		
+		Particle p;
+		p.id = i;
+		p.x = normal_dist_x(gen);
+		p.y = normal_dist_y(gen);
+		p.theta = normal_dist_theta(gen);
+		p.weight = 1.0;
 
+		particles.push_back(p);
+	}
 
-OUTPUT: values provided by the c++ program to the simulator
+	is_initialized = true;
 
-// best particle values used for calculating the error evaluation
-
-["best_particle_x"]
-
-["best_particle_y"]
-
-["best_particle_theta"]
-
-//Optional message data used for debugging particle's sensing and associations
-
-// for respective (x,y) sensed positions ID label
-
-["best_particle_associations"]
-
-// for respective (x,y) sensed positions
-
-["best_particle_sense_x"] <= list of sensed x positions
-
-["best_particle_sense_y"] <= list of sensed y positions
-
-
-Your job is to build out the methods in `particle_filter.cpp` until the simulator output says:
-
-```
-Success! Your particle filter passed!
+}
 ```
 
-# Implementing the Particle Filter
-The directory structure of this repository is as follows:
+## Prediction
 
+```c++
+void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
+	// TODO: Add measurements to each particle and add random Gaussian noise.
+	// NOTE: When adding noise you may find std::normal_distribution and std::default_random_engine useful.
+	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
+	//  http://www.cplusplus.com/reference/random/default_random_engine/
+
+	double std_x = std_pos[0];
+  	double std_y = std_pos[1];
+  	double std_theta = std_pos[2];
+
+	normal_distribution<double> normal_dist_x(0, std_x);
+	normal_distribution<double> normal_dist_y(0, std_y);
+	normal_distribution<double> normal_dist_theta(0, std_theta);
+
+	for (int i = 0; i < num_particles; i++) {
+
+		if (fabs(yaw_rate) < 0.00001) {  
+			particles[i].x += velocity * delta_t * cos(particles[i].theta);
+			particles[i].y += velocity * delta_t * sin(particles[i].theta);
+		} else {
+			particles[i].x += (velocity / yaw_rate) * (sin(particles[i].theta + yaw_rate * delta_t) - sin(particles[i].theta));
+			particles[i].y += (velocity / yaw_rate) * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate * delta_t));
+			particles[i].theta += yaw_rate * delta_t;
+		}
+
+		particles[i].x += normal_dist_x(gen);
+		particles[i].y += normal_dist_y(gen);
+		particles[i].theta += normal_dist_theta(gen);
+  	}
+
+}
 ```
-root
-|   build.sh
-|   clean.sh
-|   CMakeLists.txt
-|   README.md
-|   run.sh
-|
-|___data
-|   |   
-|   |   map_data.txt
-|   
-|   
-|___src
-    |   helper_functions.h
-    |   main.cpp
-    |   map.h
-    |   particle_filter.cpp
-    |   particle_filter.h
+
+## Update
+
+```c++
+void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
+	
+	for (int i = 0; i < observations.size(); i++) {
+		
+		LandmarkObs observation = observations[i];
+		double min_distance = numeric_limits<double>::max();
+		int map_id = -1;
+
+		for (int j = 0; j < predicted.size(); j++) {
+			
+			LandmarkObs prediction = predicted[j];
+			double distance = dist(observation.x, observation.y, prediction.x, prediction.y);
+
+			if (distance < min_distance) {
+				min_distance = distance;
+				map_id = prediction.id;
+			}
+		}
+		observations[i].id = map_id;
+	
+	}
+
+}
+
+void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], const std::vector<LandmarkObs> &observations, const Map &map_landmarks) {
+
+	for (int i = 0; i < num_particles; i++) {
+		
+		Particle p = particles[i];
+		vector<LandmarkObs> landmarks_in_range;
+
+		for (int j = 0; j < map_landmarks.landmark_list.size(); j++) {
+
+			float landmark_x = map_landmarks.landmark_list[j].x_f;
+			float landmark_y = map_landmarks.landmark_list[j].y_f;
+			int landmark_id = map_landmarks.landmark_list[j].id_i;
+
+			double dx = fabs(landmark_x - p.x);
+			double dy = fabs(landmark_y - p.y);
+
+			if (dist(dx, dy, 0, 0) <= sensor_range) {
+				LandmarkObs lm = LandmarkObs{ landmark_id, landmark_x, landmark_y };
+				landmarks_in_range.push_back(lm);
+			}
+		}
+
+		vector<LandmarkObs> transformed_observations;
+
+		for (int j = 0; j < observations.size(); j++) {
+			
+			double t_x = cos(p.theta) * observations[j].x - sin(p.theta) * observations[j].y + p.x;
+			double t_y = sin(p.theta) * observations[j].x + cos(p.theta) * observations[j].y + p.y;
+			LandmarkObs tr_ob = LandmarkObs{ observations[j].id, t_x, t_y };
+
+			transformed_observations.push_back(tr_ob);
+		}
+
+		dataAssociation(landmarks_in_range, transformed_observations);
+
+		particles[i].weight = 1.0;
+
+		for (int j = 0; j < transformed_observations.size(); j++) {
+
+			LandmarkObs tr_ob = transformed_observations[j];
+			LandmarkObs lm;
+
+			for (unsigned int k = 0; k < landmarks_in_range.size(); k++) {
+				if (landmarks_in_range[k].id == tr_ob.id) {
+					lm.x = landmarks_in_range[k].x;
+					lm.y = landmarks_in_range[k].y;
+				}
+			}
+
+			double std_x = std_landmark[0];
+			double std_y = std_landmark[1];
+			double dx = lm.x - tr_ob.x;
+			double dy = lm.y - tr_ob.y;
+
+			double weight = (1 / (2 * M_PI * std_x * std_y)) * exp(-(pow(dx,2) / (2 * pow(std_x, 2)) + (pow(dy,2) / (2 * pow(std_y, 2)))));
+
+			particles[i].weight *= weight;
+		}
+
+	}
+}
 ```
 
-The only file you should modify is `particle_filter.cpp` in the `src` directory. The file contains the scaffolding of a `ParticleFilter` class and some associated methods. Read through the code, the comments, and the header file `particle_filter.h` to get a sense for what this code is expected to do.
+## Resample
+```c++
+void ParticleFilter::resample() {
+	vector<Particle> new_particles;
+	vector<double> weights;
+	
+	for (int i = 0; i < num_particles; i++) {
+		weights.push_back(particles[i].weight);
+	}
+	
+	double max_weight = *max_element(weights.begin(), weights.end());
 
-If you are interested, take a look at `src/main.cpp` as well. This file contains the code that will actually be running your particle filter and calling the associated methods.
+	uniform_real_distribution<double> urdist(0.0, max_weight);
+  	
+	uniform_int_distribution<int> uidist(0, num_particles - 1);
+	auto index = uidist(gen);
 
-## Inputs to the Particle Filter
-You can find the inputs to the particle filter in the `data` directory.
+	double beta = 0.0;
 
-#### The Map*
-`map_data.txt` includes the position of landmarks (in meters) on an arbitrary Cartesian coordinate system. Each row has three columns
-1. x position
-2. y position
-3. landmark id
+	for (int i = 0; i < num_particles; i++) {
+		beta += urdist(gen) * 2.0;
+		
+		while (beta > weights[index]) {
+			beta -= weights[index];
+			index = (index + 1) % num_particles;
+		}
 
-### All other data the simulator provides, such as observations and controls.
+		new_particles.push_back(particles[index]);
+	}
 
-> * Map data provided by 3D Mapping Solutions GmbH.
+	particles = new_particles;
 
-## Success Criteria
-If your particle filter passes the current grading code in the simulator (you can make sure you have the current version at any time by doing a `git pull`), then you should pass!
+}
+```
 
-The things the grading code is looking for are:
+## Results
+After testing with the map provided by the simulator, the results were:
 
-
-1. **Accuracy**: your particle filter should localize vehicle position and yaw to within the values specified in the parameters `max_translation_error` and `max_yaw_error` in `src/main.cpp`.
-
-2. **Performance**: your particle filter should complete execution within the time of 100 seconds.
-
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
+![alt text][image3]
