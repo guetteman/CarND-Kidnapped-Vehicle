@@ -128,6 +128,65 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+
+	for (int i = 0; i < num_particles; i++) {
+		
+		Particle p = particles[i];
+		vector<LandmarkObs> landmarks_in_range;
+
+		for (int j = 0; j < map_landmarks.landmark_list.size(); j++) {
+
+			float landmark_x = map_landmarks.landmark_list[j].x_f;
+			float landmark_y = map_landmarks.landmark_list[j].y_f;
+			float landmark_id = map_landmarks.landmark_list[j].id_i;
+
+			double dx = fabs(landmark_x - p.x);
+			double dy = fabs(landmark_y - p.y);
+
+			if (dx <= sensor_range && dy <= sensor_range) {
+				LandmarkObs lm = LandmarkObs{ landmark_id, landmark_x, landmark_y };
+				landmarks_in_range.push_back(lm);
+			}
+		}
+
+		vector<LandmarkObs> transformed_observations;
+
+		for (int j = 0; j < observations.size(); j++) {
+			
+			double t_x = cos(p.theta) * observations[j].x - sin(p.theta) * observations[j].y + p.x;
+			double t_y = sin(p.theta) * observations[j].x + cos(p.theta) * observations[j].y + p.y;
+			LandmarkObs tr_ob = LandmarkObs{ observations[j].id, t_x, t_y };
+
+			transformed_observations.push_back(tr_ob);
+		}
+
+		dataAssociation(landmarks_in_range, transformed_observations);
+
+		p.weight = 1.0;
+
+		for (int j = 0; j < transformed_observations.size(); j++) {
+
+			LandmarkObs tr_ob = transformed_observations[j];
+			LandmarkObs lm;
+
+			for (unsigned int k = 0; k < landmarks_in_range.size(); k++) {
+				if (landmarks_in_range[k].id == tr_ob.id) {
+					lm.x = landmarks_in_range[k].x;
+					lm.y = landmarks_in_range[k].y;
+				}
+			}
+
+			double std_x = std_landmark[0];
+			double std_y = std_landmark[1];
+			double dx = lm.x - tr_ob.x;
+			double dy = lm.y - tr_ob.y;
+
+			double weight = (1 / (2*M_PI*std_x*std_y)) * exp(-(pow(dx,2) / (2 * pow(std_x, 2)) + (pow(dy,2) / (2 * pow(std_y, 2)))));
+
+			particles[i].weight *= weight;
+		}
+
+	}
 }
 
 void ParticleFilter::resample() {
